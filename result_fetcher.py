@@ -1,6 +1,9 @@
 import googlemaps
 import ConfigParser
+import json
+from apscheduler.schedulers.blocking import BlockingScheduler
 from datetime import datetime
+import os
 
 class RouteFetcher():
 	def __init__(self):
@@ -8,15 +11,34 @@ class RouteFetcher():
 		config.read('configs/googleApiKeys.ini')
 		self.apiKey = config.get('Keys', 'directions')
 		
-	def record_route_timings(self, start, destination):
+	def record_route_timings(self, start, end):
 		gmaps = googlemaps.Client(key = self.apiKey)
 		now = datetime.now()
-		timings = gmaps.directions(start, destination, mode = "driving", departure_time = now, traffic_model = "best_guess", avoid="tolls", alternatives = True)
+		directions = gmaps.directions(start, end, mode = "driving", departure_time = now, traffic_model = "best_guess", avoid="tolls", alternatives = True)
+		result = { 'query_time': str(now), 'start': start, 'end': end, 'directions_data': directions }
 		
-		for timing in timings:
-			print "{}{}".format(timing['summary'],timing['legs'][0]['duration_in_traffic'])
+		with open("data/results.json", "a") as out_file:
+			out_file.write(json.dumps(result))
 
 if __name__ == '__main__':
-	fetcher = RouteFetcher()
-	fetcher.record_route_timings("Location 1", "Location 2")
+	config = ConfigParser.ConfigParser()
+	config.read('configs/destinationPoints.ini')
+	home = config.get('Settings', 'home')
+	work = config.get('Settings', 'work')
+	morning_travel_hours = "{}-{}".format(config.get('Settings', 'min_leave'), config.get('Settings', 'max_leave'))
+	evening_travel_hours = "{}-{}".format(config.get('Settings', 'min_return'), config.get('Settings', 'max_return'))
+	minute_frequency = '0, 10, 20, 30, 40, 50'
+	work_days = '1, 2, 3, 4, 5'
 
+	fetcher = RouteFetcher()
+	
+	job_scheduler = BlockingScheduler()
+	job_scheduler.add_job(fetcher.record_route_timings, 'cron', args=[home, work], day=work_days, hour=morning_travel_hours, minute=minute_frequency)
+	job_scheduler.add_job(fetcher.record_route_timings, 'cron', args=[work, home], day=work_days, hour=evening_travel_hours, minute=minute_frequency)
+
+	print('Press Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
+
+	try:
+		job_scheduler.start()
+	except (KeyboardInterrupt, SystemExit):
+	    pass
