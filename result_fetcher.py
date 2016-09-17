@@ -1,24 +1,24 @@
 import googlemaps
 import ConfigParser
-import json
 from apscheduler.schedulers.blocking import BlockingScheduler
 from datetime import datetime
 import os
+import storage
 
 class RouteFetcher():
 	def __init__(self):
 		config = ConfigParser.ConfigParser()
 		config.read('configs/googleApiKeys.ini')
 		self.apiKey = config.get('Keys', 'directions')
+		self.storage = Storage()
 		
 	def record_route_timings(self, start, end):
 		gmaps = googlemaps.Client(key = self.apiKey)
 		now = datetime.now()
 		directions = gmaps.directions(start, end, mode = "driving", departure_time = now, traffic_model = "best_guess", avoid="tolls", alternatives = True)
-		result = { 'query_time': str(now), 'start': start, 'end': end, 'directions_data': directions }
+		data = { 'query_time': str(now), 'start': start, 'end': end, 'directions_data': directions }
 		
-		with open("data/results.json", "a") as out_file:
-			out_file.write(json.dumps(result))
+		self.storage.save_locally(data)
 
 if __name__ == '__main__':
 	config = ConfigParser.ConfigParser()
